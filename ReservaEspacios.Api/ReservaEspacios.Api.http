@@ -1,0 +1,59 @@
+@host = http://localhost:5000
+@token = pega-aqui-el-token
+
+### Registrar estudiante con correo universitario
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "estudiante@cun.edu.co",
+  "password": "Secreta1",
+  "nombre": "Estudiante CUN",
+  "telefono": "3001112233",
+  "facultad": "Facultad de Ingeniería"
+}
+
+###
+
+### Iniciar sesión y copiar el token
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "estudiante@cun.edu.co",
+  "password": "Secreta1"
+}
+
+###
+
+### Espacios disponibles
+GET {{host}}/api/spaces
+Authorization: Bearer {{token}}
+
+###
+
+### Reservar la mesa de ping pong (ajusta spaceId según GET /api/spaces)
+POST {{host}}/api/reservations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "spaceId": 4,
+  "fecha": "2026-10-08",
+  "horaInicio": "10:00",
+  "horaFin": "11:00"
+}
+
+###
+
+### Mis reservas
+GET {{host}}/api/reservations
+Authorization: Bearer {{token}}
+
+###
+
+### Cancelar una reserva
+DELETE {{host}}/api/reservations/1
+Authorization: Bearer {{token}}
+
+###
