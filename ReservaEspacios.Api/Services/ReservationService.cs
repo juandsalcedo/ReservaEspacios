@@ -10,11 +10,16 @@ namespace ReservaEspacios.Api.Services;
 public class ReservationService : IReservationService
 {
     private readonly ReservaEspaciosContext _context;
+    private readonly IEmailService _emailService;
     private readonly ILogger<ReservationService> _logger;
 
-    public ReservationService(ReservaEspaciosContext context, ILogger<ReservationService> logger)
+    public ReservationService(
+        ReservaEspaciosContext context,
+        IEmailService emailService,
+        ILogger<ReservationService> logger)
     {
         _context = context;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -79,6 +84,8 @@ public class ReservationService : IReservationService
         await _context.SaveChangesAsync(cancellationToken);
         await _context.Entry(reserva).Reference(r => r.Space).LoadAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        await TrySendConfirmationAsync(user, reserva);
 
         _logger.LogInformation(
             "Reserva {ReservaId} creada por el usuario {UserId} en el espacio {SpaceId} para {Fecha} de {Inicio} a {Fin}.",
@@ -145,6 +152,50 @@ public class ReservationService : IReservationService
         return Map(reserva);
     }
 
+    public async Task<DashboardStatsResponse> GetDashboardStatisticsAsync(CancellationToken ct)
+    {
+        var reservas = await _context.Reservations
+            .AsNoTracking()
+            .Include(r => r.Space)
+            .ToListAsync(ct);
+
+        var porEspacio = reservas
+            .GroupBy(reserva =>
+            {
+                var nombre = reserva.Space?.Nombre;
+                return string.IsNullOrWhiteSpace(nombre) ? "Sin espacio" : nombre;
+            })
+            .Select(grupo => new DashboardStatsResponse.EspacioStatDto
+            {
+                NombreEspacio = grupo.Key,
+                Cantidad = grupo.Count()
+            })
+            .OrderByDescending(item => item.Cantidad)
+            .ThenBy(item => item.NombreEspacio)
+            .ToList();
+
+        var porEstado = reservas
+            .GroupBy(reserva => reserva.Estado)
+            .Select(grupo => new DashboardStatsResponse.EstadoStatDto
+            {
+                NombreEstado = grupo.Key.ToString(),
+                Cantidad = grupo.Count()
+            })
+            .OrderByDescending(item => item.Cantidad)
+            .ThenBy(item => item.NombreEstado)
+            .ToList();
+
+        return new DashboardStatsResponse
+        {
+            TotalReservas = reservas.Count,
+            ReservasActivas = reservas.Count(reserva => reserva.Estado == EstadoReserva.Activa),
+            ReservasCanceladas = reservas.Count(reserva => reserva.Estado == EstadoReserva.Cancelada),
+            EspacioMasPopular = porEspacio.Count > 0 ? porEspacio[0].NombreEspacio : "Sin reservas",
+            ReservasPorEspacio = porEspacio,
+            ReservasPorEstado = porEstado
+        };
+    }
+
     public async Task ValidateAvailability(
         int spaceId,
         DateOnly fecha,
@@ -191,6 +242,28 @@ public class ReservationService : IReservationService
 
         if (ocupado)
             throw new ApiException("El espacio ya está ocupado en esa franja horaria.", StatusCodes.Status400BadRequest);
+    }
+
+    private async Task TrySendConfirmationAsync(User user, Reservation reserva)
+    {
+        try
+        {
+            await _emailService.SendReservationConfirmationAsync(
+                user.Email,
+                user.Nombre,
+                reserva.Space?.Nombre ?? "Espacio",
+                reserva.Fecha,
+                reserva.HoraInicio,
+                reserva.HoraFin);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "La reserva {ReservaId} quedó guardada, pero no se pudo enviar el correo de confirmación a {Email}.",
+                reserva.Id,
+                user.Email);
+        }
     }
 
     private async Task EnsureUserExists(int userId, CancellationToken cancellationToken)

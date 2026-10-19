@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using ReservaEspacios.Api.Data;
 using ReservaEspacios.Api.DTOs;
+using ReservaEspacios.Api.Models;
 using ReservaEspacios.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -126,6 +127,7 @@ if (string.IsNullOrWhiteSpace(jwtOptions.Key) || jwtOptions.Key.Length < 32)
     throw new InvalidOperationException("Jwt:Key debe tener al menos 32 caracteres.");
 
 builder.Services.Configure<JwtOptions>(jwtSection);
+builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection(SmtpSettings.SectionName));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -174,6 +176,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISpaceService, SpaceService>();
 builder.Services.AddScoped<ISpaceHorariosService, SpaceHorariosService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddOpenApi();
 
