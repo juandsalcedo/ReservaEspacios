@@ -59,7 +59,7 @@ public class AuthService : IAuthService
             Nombre = nombre,
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Rol = RolUsuario.Estudiante,
+            Rol = ResolverRolPublico(request.Rol),
             Telefono = telefono,
             Facultad = facultad,
             FechaRegistro = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified)
@@ -68,7 +68,7 @@ public class AuthService : IAuthService
         _context.Users.Add(usuario);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Usuario {Email} registrado como estudiante.", usuario.Email);
+        _logger.LogInformation("Usuario {Email} registrado como {Rol}.", usuario.Email, usuario.Rol);
         return MapProfile(usuario);
     }
 
@@ -146,6 +146,15 @@ public class AuthService : IAuthService
         {
             return false;
         }
+    }
+
+    private static RolUsuario ResolverRolPublico(string? rol)
+    {
+        if (string.IsNullOrWhiteSpace(rol) || rol.Equals("Estudiante", StringComparison.OrdinalIgnoreCase))
+            return RolUsuario.Estudiante;
+        if (rol.Equals("Docente", StringComparison.OrdinalIgnoreCase))
+            return RolUsuario.Docente;
+        throw new ApiException("El rol debe ser Estudiante o Docente.", StatusCodes.Status400BadRequest);
     }
 
     private static void ValidarPassword(string? password)

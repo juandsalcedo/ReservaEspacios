@@ -9,6 +9,7 @@ public class AuthRequest
     public string? Nombre { get; set; }
     public string? Telefono { get; set; }
     public string? Facultad { get; set; }
+    public string? Rol { get; set; }
 }
 
 public class AuthResponse
