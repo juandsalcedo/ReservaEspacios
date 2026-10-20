@@ -57,4 +57,52 @@ public class AuthController : ApiControllerBase
             return HandleException(ex, _logger, "iniciar sesión");
         }
     }
+
+    [HttpGet("password-reset-available")]
+    [ProducesResponseType(typeof(PasswordResetAvailabilityResponse), StatusCodes.Status200OK)]
+    public IActionResult PasswordResetAvailable()
+    {
+        return Ok(new PasswordResetAvailabilityResponse
+        {
+            Disponible = _authService.RestablecimientoDisponible()
+        });
+    }
+
+    [HttpPost("forgot-password")]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest? request)
+    {
+        try
+        {
+            if (request is null)
+                return BadRequest(new ErrorResponse { Error = "El cuerpo de la solicitud es obligatorio." });
+
+            var respuesta = await _authService.SolicitarRestablecimiento(request.Email, HttpContext.RequestAborted);
+            return Ok(respuesta);
+        }
+        catch (Exception ex)
+        {
+            return HandleException(ex, _logger, "solicitar el restablecimiento de contraseña");
+        }
+    }
+
+    [HttpPost("reset-password")]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest? request)
+    {
+        try
+        {
+            if (request is null)
+                return BadRequest(new ErrorResponse { Error = "El cuerpo de la solicitud es obligatorio." });
+
+            var respuesta = await _authService.RestablecerContrasena(request.Token, request.Password, HttpContext.RequestAborted);
+            return Ok(respuesta);
+        }
+        catch (Exception ex)
+        {
+            return HandleException(ex, _logger, "restablecer la contraseña");
+        }
+    }
 }

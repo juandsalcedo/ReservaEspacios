@@ -9,4 +9,6 @@ public interface IEmailService
         DateOnly fecha,
         TimeOnly horaInicio,
         TimeOnly horaFin);
+
+    Task<bool> SendPasswordResetAsync(string emailDestino, string nombreUsuario, string enlace);
 }

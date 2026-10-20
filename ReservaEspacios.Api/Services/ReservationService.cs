@@ -152,6 +152,46 @@ public class ReservationService : IReservationService
         return Map(reserva);
     }
 
+    public async Task<IReadOnlyList<ReservationResponse>> GetAllReservations(int adminId, CancellationToken cancellationToken = default)
+    {
+        await EnsureAdmin(adminId, cancellationToken);
+
+        var reservas = await _context.Reservations
+            .AsNoTracking()
+            .Include(reservation => reservation.User)
+            .Include(reservation => reservation.Space)
+            .OrderByDescending(reservation => reservation.Fecha)
+            .ThenBy(reservation => reservation.HoraInicio)
+            .ToListAsync(cancellationToken);
+
+        return reservas.Select(Map).ToList();
+    }
+
+    public async Task<ReservationResponse> CancelReservationAsAdmin(int id, int adminId, CancellationToken cancellationToken = default)
+    {
+        await EnsureAdmin(adminId, cancellationToken);
+
+        var reserva = await _context.Reservations
+            .Include(r => r.User)
+            .Include(r => r.Space)
+            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
+        if (reserva is null)
+            throw new ApiException("No se encontró la reserva.", StatusCodes.Status404NotFound);
+
+        if (reserva.Estado == EstadoReserva.Cancelada)
+            throw new ApiException("La reserva ya está cancelada.", StatusCodes.Status400BadRequest);
+
+        if (reserva.Estado != EstadoReserva.Activa)
+            throw new ApiException("Solo se pueden cancelar reservas activas.", StatusCodes.Status400BadRequest);
+
+        reserva.Estado = EstadoReserva.Cancelada;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Reserva {ReservaId} cancelada por el administrador {AdminId}.", reserva.Id, adminId);
+        return Map(reserva);
+    }
+
     public async Task<DashboardStatsResponse> GetDashboardStatisticsAsync(CancellationToken ct)
     {
         var reservas = await _context.Reservations
@@ -264,6 +304,15 @@ public class ReservationService : IReservationService
                 reserva.Id,
                 user.Email);
         }
+    }
+
+    private async Task EnsureAdmin(int userId, CancellationToken cancellationToken)
+    {
+        var usuario = await _context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.Id == userId, cancellationToken);
+        if (usuario is null)
+            throw new ApiException("El usuario autenticado no existe.", StatusCodes.Status401Unauthorized);
+        if (usuario.Rol != RolUsuario.Admin)
+            throw new ApiException("No tienes permiso para realizar esta acción.", StatusCodes.Status403Forbidden);
     }
 
     private async Task EnsureUserExists(int userId, CancellationToken cancellationToken)

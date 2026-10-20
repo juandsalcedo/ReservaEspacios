@@ -20,6 +20,11 @@ public class UpdateProfileRequest
     public string Facultad { get; set; } = string.Empty;
 }
 
+public class UpdateRoleRequest
+{
+    public string Rol { get; set; } = string.Empty;
+}
+
 public class ChangePasswordRequest
 {
     public string PasswordActual { get; set; } = string.Empty;

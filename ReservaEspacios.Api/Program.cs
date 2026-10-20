@@ -127,6 +127,7 @@ if (string.IsNullOrWhiteSpace(jwtOptions.Key) || jwtOptions.Key.Length < 32)
     throw new InvalidOperationException("Jwt:Key debe tener al menos 32 caracteres.");
 
 builder.Services.Configure<JwtOptions>(jwtSection);
+builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(AppOptions.SectionName));
 builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection(SmtpSettings.SectionName));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

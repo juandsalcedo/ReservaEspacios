@@ -16,5 +16,11 @@ public class User
     public string Facultad { get; set; } = string.Empty;
     public DateTime FechaRegistro { get; set; }
 
+    [JsonIgnore]
+    public string? PasswordResetTokenHash { get; set; }
+
+    [JsonIgnore]
+    public DateTime? PasswordResetTokenExpires { get; set; }
+
     public ICollection<Reservation> Reservations { get; set; } = new List<Reservation>();
 }

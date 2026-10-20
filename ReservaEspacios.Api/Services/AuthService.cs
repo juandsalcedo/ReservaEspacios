@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,10 @@ namespace ReservaEspacios.Api.Services;
 public class AuthService : IAuthService
 {
     public const string MensajeCorreoUniversitario = "Solo se permiten correos universitarios (@cun.edu.co)";
+    public const string MensajeRestablecimiento =
+        "Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña.";
+
+    private const int ResetTokenMinutes = 30;
 
     private static readonly Regex CorreoUniversitario = new(
         @"^[^@\s]+@cun\.edu\.co$",
@@ -22,12 +27,24 @@ public class AuthService : IAuthService
 
     private readonly ReservaEspaciosContext _context;
     private readonly JwtOptions _jwt;
+    private readonly AppOptions _app;
+    private readonly SmtpSettings _smtp;
+    private readonly IEmailService _emailService;
     private readonly ILogger<AuthService> _logger;
 
-    public AuthService(ReservaEspaciosContext context, IOptions<JwtOptions> jwtOptions, ILogger<AuthService> logger)
+    public AuthService(
+        ReservaEspaciosContext context,
+        IOptions<JwtOptions> jwtOptions,
+        IOptions<AppOptions> appOptions,
+        IOptions<SmtpSettings> smtpOptions,
+        IEmailService emailService,
+        ILogger<AuthService> logger)
     {
         _context = context;
         _jwt = jwtOptions.Value;
+        _app = appOptions.Value;
+        _smtp = smtpOptions.Value;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -99,6 +116,76 @@ public class AuthService : IAuthService
         };
     }
 
+    public bool RestablecimientoDisponible()
+    {
+        return !string.IsNullOrWhiteSpace(_smtp.Host)
+            && _smtp.Port > 0
+            && !string.IsNullOrWhiteSpace(_smtp.FromEmail);
+    }
+
+    public async Task<MessageResponse> SolicitarRestablecimiento(string? email, CancellationToken cancellationToken = default)
+    {
+        var normalizado = NormalizarCorreo(email);
+        var usuario = await _context.Users.FirstOrDefaultAsync(user => user.Email == normalizado, cancellationToken);
+        if (usuario is null)
+            return new MessageResponse { Mensaje = MensajeRestablecimiento };
+
+        var token = CrearTokenRestablecimiento();
+        usuario.PasswordResetTokenHash = HashToken(token);
+        usuario.PasswordResetTokenExpires = DateTime.UtcNow.AddMinutes(ResetTokenMinutes);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        var baseUrl = string.IsNullOrWhiteSpace(_app.PublicUrl)
+            ? "https://cun-book.vercel.app"
+            : _app.PublicUrl.Trim().TrimEnd('/');
+        var enlace = $"{baseUrl}/restablecer-contrasena?token={Uri.EscapeDataString(token)}";
+
+        try
+        {
+            var enviado = await _emailService.SendPasswordResetAsync(usuario.Email, usuario.Nombre, enlace);
+            if (!enviado)
+            {
+                usuario.PasswordResetTokenHash = null;
+                usuario.PasswordResetTokenExpires = null;
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            usuario.PasswordResetTokenHash = null;
+            usuario.PasswordResetTokenExpires = null;
+            await _context.SaveChangesAsync(cancellationToken);
+            _logger.LogError(ex, "No se pudo enviar el correo de restablecimiento a {Email}.", usuario.Email);
+        }
+
+        return new MessageResponse { Mensaje = MensajeRestablecimiento };
+    }
+
+    public async Task<MessageResponse> RestablecerContrasena(string? token, string? password, CancellationToken cancellationToken = default)
+    {
+        ValidarPassword(password);
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 200)
+            throw new ApiException("El enlace de restablecimiento no es válido o ya expiró.", StatusCodes.Status400BadRequest);
+
+        var hash = HashToken(token.Trim());
+        var ahora = DateTime.UtcNow;
+        var nuevoHash = BCrypt.Net.BCrypt.HashPassword(password);
+        var filas = await _context.Users
+            .Where(user => user.PasswordResetTokenHash == hash
+                && user.PasswordResetTokenExpires != null
+                && user.PasswordResetTokenExpires > ahora)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(user => user.PasswordHash, nuevoHash)
+                .SetProperty(user => user.PasswordResetTokenHash, (string?)null)
+                .SetProperty(user => user.PasswordResetTokenExpires, (DateTime?)null), cancellationToken);
+
+        if (filas == 0)
+            throw new ApiException("El enlace de restablecimiento no es válido o ya expiró.", StatusCodes.Status400BadRequest);
+
+        _logger.LogInformation("Se restableció una contraseña con un token de un solo uso.");
+        return new MessageResponse { Mensaje = "Contraseña actualizada. Ya puedes iniciar sesión." };
+    }
+
     public static string NormalizarCorreo(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -155,6 +242,16 @@ public class AuthService : IAuthService
         if (rol.Equals("Docente", StringComparison.OrdinalIgnoreCase))
             return RolUsuario.Docente;
         throw new ApiException("El rol debe ser Estudiante o Docente.", StatusCodes.Status400BadRequest);
+    }
+
+    private static string CrearTokenRestablecimiento()
+    {
+        return Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(32));
+    }
+
+    private static string HashToken(string token)
+    {
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
     }
 
     private static void ValidarPassword(string? password)

@@ -182,6 +182,13 @@ namespace ReservaEspacios.Api.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<DateTime?>("PasswordResetTokenExpires")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PasswordResetTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("Rol")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -196,6 +203,10 @@ namespace ReservaEspacios.Api.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("PasswordResetTokenHash")
+                        .IsUnique()
+                        .HasFilter("[PasswordResetTokenHash] IS NOT NULL");
 
                     b.ToTable("Users", (string)null);
                 });

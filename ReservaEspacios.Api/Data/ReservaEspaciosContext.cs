@@ -29,7 +29,12 @@ public class ReservaEspaciosContext : DbContext
             entity.Property(user => user.Facultad).HasMaxLength(150).IsRequired();
             entity.Property(user => user.Rol).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(user => user.FechaRegistro).HasColumnType("datetime2");
+            entity.Property(user => user.PasswordResetTokenHash).HasMaxLength(64);
+            entity.Property(user => user.PasswordResetTokenExpires).HasColumnType("datetime2");
             entity.HasIndex(user => user.Email).IsUnique();
+            entity.HasIndex(user => user.PasswordResetTokenHash)
+                .IsUnique()
+                .HasFilter("[PasswordResetTokenHash] IS NOT NULL");
 
             entity.HasMany(user => user.Reservations)
                 .WithOne(reservation => reservation.User)
