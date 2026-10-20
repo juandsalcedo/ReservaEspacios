@@ -1,0 +1,15 @@
+# El servicio en linea es reservaespacios-z1av.onrender.com.
+# Este archivo no enciende solo un servicio creado a mano en el panel.
+# Para que un push a main se publique, en ese servicio hay que dejar
+# Auto-Deploy en Yes y la rama en main.
+services:
+  - type: web
+    name: reservaespacios
+    runtime: docker
+    branch: main
+    dockerfilePath: ./ReservaEspacios.Api/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
